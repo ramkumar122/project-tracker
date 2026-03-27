@@ -8,7 +8,11 @@ import {
   Pressable,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
-import { colors, spacing, radius, typography, columnConfig } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { spacing, radius, typography } from '../constants/theme';
+import { getDueDateInfo } from '../utils/dueDate';
+import { getAvatarColor } from '../utils/avatarColor';
+import { ColumnDef } from './KanbanColumn';
 
 export interface Task {
   id: string;
@@ -20,6 +24,11 @@ export interface Task {
   created_by: string;
   created_at: string;
   creator_name?: string;
+  due_date?: string | null;
+  subtask_total?: number;
+  subtask_done?: number;
+  assigned_to?: string | null;
+  assignee_name?: string | null;
 }
 
 interface TaskCardProps {
@@ -27,51 +36,50 @@ interface TaskCardProps {
   onPress: () => void;
   onMove: (newColumn: string) => void;
   onDelete: () => void;
+  allColumns: ColumnDef[];
 }
 
-const COLUMN_ORDER = ['todo', 'inprogress', 'onhold', 'done'];
-const ALL_COLUMNS = Object.entries(columnConfig) as [string, { label: string; color: string }][];
-
-export default function TaskCard({ task, onPress, onMove, onDelete }: TaskCardProps) {
+export default function TaskCard({ task, onPress, onMove, onDelete, allColumns }: TaskCardProps) {
+  const { colors } = useTheme();
   const [menuVisible, setMenuVisible] = useState(false);
   const swipeableRef = useRef<Swipeable>(null);
 
-  const currentIndex = COLUMN_ORDER.indexOf(task.status);
-  const nextStatus = COLUMN_ORDER[currentIndex + 1];
-  const prevStatus = COLUMN_ORDER[currentIndex - 1];
+  const currentIndex = allColumns.findIndex((c) => c.slug === task.status);
+  const nextCol = currentIndex >= 0 && currentIndex < allColumns.length - 1
+    ? allColumns[currentIndex + 1]
+    : null;
+  const prevCol = currentIndex > 0 ? allColumns[currentIndex - 1] : null;
 
-  const nextConfig = nextStatus ? columnConfig[nextStatus as keyof typeof columnConfig] : null;
-  const prevConfig = prevStatus ? columnConfig[prevStatus as keyof typeof columnConfig] : null;
+  const dueInfo = getDueDateInfo(task.due_date, colors);
+  const creatorInitial = task.creator_name ? task.creator_name.charAt(0).toUpperCase() : '?';
+  const assigneeInitial = task.assignee_name ? task.assignee_name.charAt(0).toUpperCase() : null;
+  const assigneeColor = task.assignee_name ? getAvatarColor(task.assignee_name) : '#10b981';
+  const hasSubtasks = (task.subtask_total ?? 0) > 0;
 
-  // Swipe RIGHT → move to next column (revealed on left side)
   const renderLeftActions = () => {
-    if (!nextConfig) return null;
+    if (!nextCol) return null;
     return (
-      <View style={[styles.swipeAction, { backgroundColor: nextConfig.color + '22', borderColor: nextConfig.color + '44' }]}>
-        <Text style={[styles.swipeArrow, { color: nextConfig.color }]}>→</Text>
-        <Text style={[styles.swipeLabel, { color: nextConfig.color }]}>{nextConfig.label}</Text>
+      <View style={[swipeStyles.action, { backgroundColor: nextCol.color + '22', borderColor: nextCol.color + '55' }]}>
+        <Text style={[swipeStyles.arrow, { color: nextCol.color }]}>→</Text>
+        <Text style={[swipeStyles.label, { color: nextCol.color }]}>{nextCol.name}</Text>
       </View>
     );
   };
 
-  // Swipe LEFT → move to previous column (revealed on right side)
   const renderRightActions = () => {
-    if (!prevConfig) return null;
+    if (!prevCol) return null;
     return (
-      <View style={[styles.swipeAction, styles.swipeRight, { backgroundColor: prevConfig.color + '22', borderColor: prevConfig.color + '44' }]}>
-        <Text style={[styles.swipeLabel, { color: prevConfig.color }]}>{prevConfig.label}</Text>
-        <Text style={[styles.swipeArrow, { color: prevConfig.color }]}>←</Text>
+      <View style={[swipeStyles.action, swipeStyles.actionRight, { backgroundColor: prevCol.color + '22', borderColor: prevCol.color + '55' }]}>
+        <Text style={[swipeStyles.label, { color: prevCol.color }]}>{prevCol.name}</Text>
+        <Text style={[swipeStyles.arrow, { color: prevCol.color }]}>←</Text>
       </View>
     );
   };
 
   const handleSwipeOpen = (direction: 'left' | 'right') => {
     swipeableRef.current?.close();
-    if (direction === 'left' && nextStatus) {
-      onMove(nextStatus);
-    } else if (direction === 'right' && prevStatus) {
-      onMove(prevStatus);
-    }
+    if (direction === 'left' && nextCol) onMove(nextCol.slug);
+    else if (direction === 'right' && prevCol) onMove(prevCol.slug);
   };
 
   return (
@@ -84,68 +92,114 @@ export default function TaskCard({ task, onPress, onMove, onDelete }: TaskCardPr
         overshootLeft={false}
         overshootRight={false}
         friction={2}
-        containerStyle={styles.swipeContainer}
+        containerStyle={{ marginBottom: spacing.sm, borderRadius: radius.md, overflow: 'hidden' }}
       >
-        <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
-          <Text style={styles.title} numberOfLines={2}>
+        <TouchableOpacity
+          style={[cardStyle.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={onPress}
+          activeOpacity={0.85}
+        >
+          <Text style={[cardStyle.title, { color: colors.text }]} numberOfLines={2}>
             {task.title}
           </Text>
+
           {task.description ? (
-            <Text style={styles.description} numberOfLines={2}>
+            <Text style={[cardStyle.description, { color: colors.textMuted }]} numberOfLines={2}>
               {task.description}
             </Text>
           ) : null}
-          <View style={styles.footer}>
-            <View>
-              {task.creator_name ? (
-                <Text style={styles.creator}>{task.creator_name}</Text>
-              ) : null}
-              <Text style={styles.date}>
-                {new Date(task.created_at).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                })}
+
+          {/* Due date badge */}
+          {dueInfo && (
+            <View style={[cardStyle.dueBadge, { backgroundColor: dueInfo.color + '18', borderColor: dueInfo.color + '40' }]}>
+              <Text style={[cardStyle.dueText, { color: dueInfo.color }]}>
+                {dueInfo.status === 'overdue' ? '⚠ ' : '📅 '}{dueInfo.label}
               </Text>
             </View>
-            <TouchableOpacity
-              onPress={() => setMenuVisible(true)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.menuDots}>•••</Text>
-            </TouchableOpacity>
+          )}
+
+          {/* Subtask progress — only shown if subtasks exist */}
+          {hasSubtasks && (
+            <View style={cardStyle.subtaskRow}>
+              <View style={[cardStyle.subtaskBar, { backgroundColor: colors.border }]}>
+                <View
+                  style={[
+                    cardStyle.subtaskFill,
+                    {
+                      backgroundColor: colors.success,
+                      width: `${((task.subtask_done ?? 0) / (task.subtask_total ?? 1)) * 100}%` as any,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[cardStyle.subtaskCount, { color: colors.textDim }]}>
+                {task.subtask_done}/{task.subtask_total}
+              </Text>
+            </View>
+          )}
+
+          <View style={cardStyle.footer}>
+            <Text style={[cardStyle.date, { color: colors.textDim }]}>
+              {new Date(task.created_at).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+              })}
+            </Text>
+            <View style={cardStyle.footerRight}>
+              {assigneeInitial && (
+                <View style={[cardStyle.avatar, { backgroundColor: assigneeColor + '30' }]}>
+                  <Text style={[cardStyle.avatarText, { color: assigneeColor }]}>
+                    {assigneeInitial}
+                  </Text>
+                </View>
+              )}
+              <View style={[cardStyle.avatar, { backgroundColor: colors.primary + '30' }]}>
+                <Text style={[cardStyle.avatarText, { color: colors.primary }]}>
+                  {creatorInitial}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setMenuVisible(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[cardStyle.menuDots, { color: colors.textDim }]}>•••</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </TouchableOpacity>
       </Swipeable>
 
       <Modal visible={menuVisible} transparent animationType="fade">
-        <Pressable style={styles.overlay} onPress={() => setMenuVisible(false)}>
-          <Pressable onPress={() => {}} style={styles.menu}>
-            <Text style={styles.menuTaskTitle} numberOfLines={1}>
+        <Pressable style={menuStyle.overlay} onPress={() => setMenuVisible(false)}>
+          <Pressable
+            onPress={() => {}}
+            style={[menuStyle.menu, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
+            <Text
+              style={[menuStyle.taskTitle, { color: colors.text, borderBottomColor: colors.border }]}
+              numberOfLines={1}
+            >
               {task.title}
             </Text>
-            <Text style={styles.sectionLabel}>MOVE TO</Text>
-            {ALL_COLUMNS.filter(([key]) => key !== task.status).map(([key, cfg]) => (
-              <TouchableOpacity
-                key={key}
-                style={styles.menuRow}
-                onPress={() => {
-                  onMove(key);
-                  setMenuVisible(false);
-                }}
-              >
-                <View style={[styles.dot, { backgroundColor: cfg.color }]} />
-                <Text style={styles.menuRowText}>{cfg.label}</Text>
-              </TouchableOpacity>
-            ))}
-            <View style={styles.divider} />
+            <Text style={[menuStyle.sectionLabel, { color: colors.textDim }]}>MOVE TO</Text>
+            {allColumns
+              .filter((c) => c.slug !== task.status)
+              .map((col) => (
+                <TouchableOpacity
+                  key={col.slug}
+                  style={menuStyle.menuRow}
+                  onPress={() => { onMove(col.slug); setMenuVisible(false); }}
+                >
+                  <View style={[menuStyle.dot, { backgroundColor: col.color }]} />
+                  <Text style={[menuStyle.menuRowText, { color: colors.text }]}>{col.name}</Text>
+                </TouchableOpacity>
+              ))}
+            <View style={[menuStyle.divider, { backgroundColor: colors.border }]} />
             <TouchableOpacity
-              style={styles.menuRow}
-              onPress={() => {
-                onDelete();
-                setMenuVisible(false);
-              }}
+              style={menuStyle.menuRow}
+              onPress={() => { onDelete(); setMenuVisible(false); }}
             >
-              <Text style={styles.deleteText}>Delete Task</Text>
+              <Text style={[menuStyle.deleteText, { color: colors.error }]}>Delete Task</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -154,13 +208,8 @@ export default function TaskCard({ task, onPress, onMove, onDelete }: TaskCardPr
   );
 }
 
-const styles = StyleSheet.create({
-  swipeContainer: {
-    marginBottom: spacing.sm,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  swipeAction: {
+const swipeStyles = StyleSheet.create({
+  action: {
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
@@ -170,83 +219,106 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     minWidth: 90,
   },
-  swipeRight: {
-    flexDirection: 'row-reverse',
-  },
-  swipeArrow: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  swipeLabel: {
-    ...typography.label,
-    fontWeight: '600',
-  },
+  actionRight: { flexDirection: 'row-reverse' },
+  arrow: { fontSize: 18, fontWeight: '700' },
+  label: { ...typography.label, fontWeight: '600' },
+});
+
+const cardStyle = StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
     borderRadius: radius.md,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   title: {
     ...typography.body,
-    color: colors.text,
-    fontWeight: '500',
+    fontWeight: '600',
     marginBottom: spacing.xs,
+    lineHeight: 20,
   },
   description: {
     ...typography.caption,
-    color: colors.textMuted,
     marginBottom: spacing.sm,
     lineHeight: 18,
+  },
+  dueBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    marginBottom: spacing.sm,
+  },
+  dueText: { ...typography.label, fontWeight: '500' },
+  subtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  subtaskBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  subtaskFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  subtaskCount: {
+    ...typography.label,
+    minWidth: 28,
+    textAlign: 'right',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: spacing.xs,
   },
-  creator: {
-    ...typography.label,
-    color: colors.primaryLight,
-    marginBottom: 2,
+  date: { ...typography.label },
+  footerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  date: {
-    ...typography.label,
-    color: colors.textDim,
+  avatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  menuDots: {
-    color: colors.textDim,
-    fontSize: 12,
-    letterSpacing: 1,
-  },
+  avatarText: { fontSize: 10, fontWeight: '700' },
+  menuDots: { fontSize: 12, letterSpacing: 1 },
+});
+
+const menuStyle = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   menu: {
-    backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.md,
     width: 240,
     borderWidth: 1,
-    borderColor: colors.border,
   },
-  menuTaskTitle: {
+  taskTitle: {
     ...typography.body,
-    color: colors.text,
     fontWeight: '600',
     paddingBottom: spacing.sm,
     marginBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
-  sectionLabel: {
-    ...typography.label,
-    color: colors.textDim,
-    marginBottom: spacing.xs,
-  },
+  sectionLabel: { ...typography.label, marginBottom: spacing.xs },
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -254,23 +326,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     borderRadius: radius.sm,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: spacing.sm,
-  },
-  menuRowText: {
-    ...typography.body,
-    color: colors.text,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.xs,
-  },
-  deleteText: {
-    ...typography.body,
-    color: colors.error,
-  },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: spacing.sm },
+  menuRowText: { ...typography.body },
+  divider: { height: 1, marginVertical: spacing.xs },
+  deleteText: { ...typography.body },
 });

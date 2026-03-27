@@ -6,37 +6,78 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { colors, spacing, radius, typography, columnConfig } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { spacing, radius, typography } from '../constants/theme';
 import TaskCard, { Task } from './TaskCard';
 
+export interface ColumnDef {
+  slug: string;
+  name: string;
+  color: string;
+}
+
 interface KanbanColumnProps {
-  column: string;
+  columnSlug: string;
+  columnName: string;
+  columnColor: string;
   tasks: Task[];
   height: number;
+  allColumns: ColumnDef[];
   onCreateTask: (column: string) => void;
   onMoveTask: (taskId: string, newColumn: string) => void;
   onDeleteTask: (taskId: string) => void;
   onOpenTask: (task: Task) => void;
+  canDelete?: boolean;
+  onDeleteColumn?: () => void;
 }
 
 export default function KanbanColumn({
-  column,
+  columnSlug,
+  columnName,
+  columnColor,
   tasks,
   height,
+  allColumns,
   onCreateTask,
   onMoveTask,
   onDeleteTask,
   onOpenTask,
+  canDelete,
+  onDeleteColumn,
 }: KanbanColumnProps) {
-  const cfg = columnConfig[column as keyof typeof columnConfig];
+  const { colors } = useTheme();
 
   return (
-    <View style={[styles.column, { height }]}>
+    <View
+      style={[
+        styles.column,
+        { height, backgroundColor: colors.surface, borderColor: colors.border },
+      ]}
+    >
+      {/* Colored top accent bar */}
+      <View style={[styles.topAccent, { backgroundColor: columnColor }]} />
+
+      {/* Column header */}
       <View style={styles.header}>
-        <View style={[styles.dot, { backgroundColor: cfg.color }]} />
-        <Text style={styles.columnTitle}>{cfg.label}</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>{tasks.length}</Text>
+        <View style={[styles.headerPill, { backgroundColor: columnColor + '18' }]}>
+          <View style={[styles.dot, { backgroundColor: columnColor }]} />
+          <Text style={[styles.columnTitle, { color: columnColor }]}>{columnName}</Text>
+        </View>
+
+        <View style={styles.headerRight}>
+          <View style={[styles.countBadge, { backgroundColor: columnColor + '20' }]}>
+            <Text style={[styles.countText, { color: columnColor }]}>{tasks.length}</Text>
+          </View>
+          {/* Delete button — custom columns only, owner only */}
+          {canDelete && (
+            <TouchableOpacity
+              onPress={onDeleteColumn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.deleteColBtn}
+            >
+              <Text style={[styles.deleteColText, { color: colors.textDim }]}>×</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -49,21 +90,24 @@ export default function KanbanColumn({
           <TaskCard
             key={task.id}
             task={task}
+            allColumns={allColumns}
             onPress={() => onOpenTask(task)}
             onMove={(newColumn) => onMoveTask(task.id, newColumn)}
             onDelete={() => onDeleteTask(task.id)}
           />
         ))}
         {tasks.length === 0 && (
-          <Text style={styles.emptyText}>No tasks here</Text>
+          <View style={[styles.emptyBox, { borderColor: colors.border }]}>
+            <Text style={[styles.emptyText, { color: colors.textDim }]}>No tasks</Text>
+          </View>
         )}
       </ScrollView>
 
       <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => onCreateTask(column)}
+        style={[styles.addButton, { borderTopColor: colors.border }]}
+        onPress={() => onCreateTask(columnSlug)}
       >
-        <Text style={styles.addButtonText}>+ Add Task</Text>
+        <Text style={[styles.addButtonText, { color: columnColor }]}>+ Add Task</Text>
       </TouchableOpacity>
     </View>
   );
@@ -71,58 +115,97 @@ export default function KanbanColumn({
 
 const styles = StyleSheet.create({
   column: {
-    width: 280,
-    backgroundColor: colors.surface,
+    width: 288,
     borderRadius: radius.lg,
-    padding: spacing.md,
     marginRight: spacing.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  topAccent: {
+    height: 3,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  headerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    gap: spacing.xs,
   },
   dot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
-    marginRight: spacing.sm,
   },
   columnTitle: {
-    ...typography.h3,
-    color: colors.text,
-    flex: 1,
+    ...typography.label,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   countBadge: {
-    backgroundColor: colors.card,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.full,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xs,
   },
   countText: {
     ...typography.label,
-    color: colors.textMuted,
+    fontWeight: '700',
+  },
+  deleteColBtn: {
+    width: 22,
+    height: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteColText: {
+    fontSize: 18,
+    lineHeight: 20,
+    fontWeight: '400',
   },
   taskList: {
     flex: 1,
+    paddingHorizontal: spacing.sm,
+  },
+  emptyBox: {
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: radius.md,
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
   },
   emptyText: {
     ...typography.caption,
-    color: colors.textDim,
-    textAlign: 'center',
-    paddingVertical: spacing.lg,
   },
   addButton: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   addButtonText: {
     ...typography.body,
-    color: colors.textMuted,
+    fontWeight: '500',
   },
 });

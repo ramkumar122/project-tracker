@@ -1,4 +1,21 @@
-export const colors = {
+export interface ThemeColors {
+  background: string;
+  surface: string;
+  card: string;
+  border: string;
+  primary: string;
+  primaryLight: string;
+  text: string;
+  textMuted: string;
+  textDim: string;
+  error: string;
+  success: string;
+  warning: string;
+  headerBg: string;
+  inputBg: string;
+}
+
+export const darkColors: ThemeColors = {
   background: '#0f0e17',
   surface: '#1a1a2e',
   card: '#1e2a45',
@@ -11,13 +28,36 @@ export const colors = {
   error: '#f87171',
   success: '#34d399',
   warning: '#fbbf24',
+  headerBg: '#1a1a2e',
+  inputBg: '#0f0e17',
 };
 
+export const lightColors: ThemeColors = {
+  background: '#f1f5f9',
+  surface: '#ffffff',
+  card: '#ffffff',
+  border: '#e2e8f0',
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  text: '#1e293b',
+  textMuted: '#64748b',
+  textDim: '#94a3b8',
+  error: '#ef4444',
+  success: '#10b981',
+  warning: '#f59e0b',
+  headerBg: '#ffffff',
+  inputBg: '#f8fafc',
+};
+
+// Default export for legacy static imports (dark theme)
+export const colors = darkColors;
+
+// Vibrant column colors matching the modern Kanban aesthetic
 export const columnConfig = {
-  todo: { label: 'To Do', color: '#94a3b8' },
-  inprogress: { label: 'In Progress', color: '#60a5fa' },
-  onhold: { label: 'On Hold', color: '#fbbf24' },
-  done: { label: 'Done', color: '#34d399' },
+  todo: { label: 'To Do', color: '#f43f5e' },
+  inprogress: { label: 'In Progress', color: '#f59e0b' },
+  onhold: { label: 'On Hold', color: '#8b5cf6' },
+  done: { label: 'Done', color: '#10b981' },
 };
 
 export const spacing = {
